@@ -11,13 +11,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
+from muse.folders import phangs_folder
+
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
 matplotlib.rcParams['font.size'] = 14
 
-# TODO: This needs to be tidied up
-
-os.chdir('/Users/williams/Documents/phangs')
+os.chdir(phangs_folder)
 
 galaxies = ['NGC1087', 'NGC1512', 'NGC1672', 'NGC3351', 'NGC4254', 'NGC5068',
             'IC5332', 'NGC1365', 'NGC1566', 'NGC2835', 'NGC3627', 'NGC4535', 'NGC628']
@@ -44,7 +44,7 @@ for galaxy in galaxies:
 
         # Load in the MUSE pattern speeds
         omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(
-            'pattern_speeds_output/' + galaxy + '_pattern_speed_muse.txt',
+            'pattern_speeds_output/muse/' + galaxy + '_mass_smask_bmask_pattern_speed_muse.txt',
             unpack=True)
 
         plt.errorbar(omega_bar, position - 0.125,
@@ -62,7 +62,7 @@ for galaxy in galaxies:
 
         # Load in the ALMA pattern speeds
         omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(
-            'pattern_speeds_output/' + galaxy + '_pattern_speed_alma.txt',
+            'pattern_speeds_output/alma/' + galaxy + '_bmask_pattern_speed_alma.txt',
             unpack=True)
 
         plt.errorbar(omega_bar, position + 0.125,
