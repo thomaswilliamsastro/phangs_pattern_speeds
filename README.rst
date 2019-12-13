@@ -2,11 +2,6 @@
 PHANGS Pattern Speeds
 #####################
 
-.. note::
-
-   * Rerun plot_tw_speeds for ALMA once is run
-   * Rerun the alma/muse comparison
-
 The code in this repository calculates the bar pattern speed for the PHANGS MUSE and PHANGS ALMA galaxies using the
 Tremaine-Weinberg method. This document provides an overview of what each file does. The repository is structured so
 that any code specific to MUSE is contained within the MUSE folder, and the same with ALMA. Any code that is used by
@@ -118,9 +113,9 @@ length, and slit width.
 Changes
 =======
 
--------
-Ongoing
--------
+----------
+2019/12/13
+----------
 
 * Modified script to produce overview plot for ALMA. Since there are a lot of galaxies, also a KDE plot
   (``alma/plot_tw_speeds``)
