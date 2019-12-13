@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Test to see how varying the slit lengths affects the measured pattern speed
+Test to see how varying the slit length affects the measured pattern speed
 
 @author: Tom Williams
 """
@@ -11,7 +11,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from muse.folders import phangs_folder, plot_folder, output_folder
+from alma.folders import phangs_folder, plot_folder, output_folder
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -19,10 +19,10 @@ matplotlib.rcParams['font.size'] = 14
 
 os.chdir(phangs_folder)
 
-galaxy = 'NGC1512'
+galaxy = 'NGC2090'
 
-start = 30
-stop = 110
+start = 10
+stop = 50
 step = 5
 
 slit_lengths = np.arange(start, stop + step, step)
@@ -35,7 +35,7 @@ omega_bars_err_down = np.zeros_like(omega_bars)
 
 for i, slit_length in enumerate(slit_lengths):
 
-    file_name = galaxy+'_mass_smask_bmask_sl_' + str(slit_length) + '_pattern_speed_muse.txt'
+    file_name = galaxy+'_bmask_sl_' + str(slit_length) + '_pattern_speed_alma.txt'
 
     try:
         omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(
@@ -55,18 +55,18 @@ plt.errorbar(slit_lengths, omega_bars,
              fmt='o',
              c='k')
 
-# Plot on the bar radius
+# Plot on the bar radius -- not applicable for NGC2090.
 
-plt.axvline(71.4,c='k',ls='--',lw=2)
+# plt.axvline(71.4,c='k',ls='--',lw=2)
 
 plt.xlabel(r'$r$ ($^{\prime \prime}$)')
 plt.ylabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
 
 plt.tight_layout()
 
-plt.savefig(plot_folder+galaxy+'/'+galaxy+'_muse_sl_comparison.png',
+plt.savefig(plot_folder+galaxy+'/'+galaxy+'_alma_sl_comparison.png',
             bbox_inches='tight')
-plt.savefig(plot_folder+galaxy+'/'+galaxy+'_muse_sl_comparison.pdf',
+plt.savefig(plot_folder+galaxy+'/'+galaxy+'_alma_sl_comparison.pdf',
             bbox_inches='tight')
 
 print('Complete!')

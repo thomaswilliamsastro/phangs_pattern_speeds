@@ -62,7 +62,7 @@ bar_galaxy, bar_rs = np.loadtxt('environment/PHANGSmasks_v2.dat',
                                 dtype=str)
 
 overwrite_pafit = False
-overwrite_bootstraps = True
+overwrite_bootstraps = False
 plot = True
 
 # Various options we can play around with for testing
@@ -95,6 +95,10 @@ slit_lengths = [0]
 # step = 5
 #
 # slit_lengths = np.arange(start, stop + step, step)
+
+# And the test galaxy:
+
+# galaxies = ['NGC1512']
 
 for galaxy in galaxies:
 

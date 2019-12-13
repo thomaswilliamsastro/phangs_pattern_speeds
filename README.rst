@@ -2,6 +2,11 @@
 PHANGS Pattern Speeds
 #####################
 
+.. note::
+
+   * Rerun plot_tw_speeds for ALMA once is run
+   * Rerun the alma/muse comparison
+
 The code in this repository calculates the bar pattern speed for the PHANGS MUSE and PHANGS ALMA galaxies using the
 Tremaine-Weinberg method. This document provides an overview of what each file does. The repository is structured so
 that any code specific to MUSE is contained within the MUSE folder, and the same with ALMA. Any code that is used by
@@ -63,7 +68,7 @@ so I leave it at the default (which will help to show up any interesting feature
 ``tw_muse``
 -----------
 
-Sets up MUSE maps to be fed into ``bootstrap.py`` to calculate a pattern speed. Contains a number of options which have
+Sets up MUSE maps to be fed into ``bootstraps`` to calculate a pattern speed. Contains a number of options which have
 been used in testing. The ones it's set to are "optimal", so should be fine to use as-is. Has options for varying slit
 length, slit width, and tracer.
 
@@ -75,7 +80,7 @@ ALMA
 ``folders``
 -----------
 
-Contains variables for the folder names used a lot throughout this MUSE work
+Contains variables for the folder names used a lot throughout this ALMA work
 
 ------------
 ``get_data``
@@ -85,17 +90,43 @@ Connects to the PHANGS server at MPIA and downloads the current latest reduction
 error maps at the highest resolution (priority is '12m+7m+tp', '12m+7m', '7m+tp', then finally '7m'). This will work if
 you're at MPIA, but may need some editing if you're downloading from a different server.
 
+-----------------
+``sl_comparison``
+-----------------
+
+Produces a diagnostic plot for the MUSE data, comparing the recovered pattern speed for a variety of different slit
+radii (10 arcsec to 50 arcsec in 5 arcsec steps). The recovered pattern speed levels out at large radii, so much like
+the MUSE I don't do any masking of slit lengths.
+
+-----------------
+``sw_comparison``
+-----------------
+
+Produces a diagnostic plot for the ALMA data, comparing the recovered pattern speed for a variety of different slit
+widths (1 arcsec to 10 arcsec in 0.5 arcsec steps). The recovered pattern speed is the same no matter the slit width,
+so I leave it at the default (which will help to show up any interesting features and potential multiple pattern speeds.
+
 -----------
-``tw_muse``
+``tw_alma``
 -----------
 
-Sets up ALMA maps to be fed into ``bootstrap.py`` to calculate a pattern speed. Contains a number of options which have
+Sets up ALMA maps to be fed into ``bootstraps`` to calculate a pattern speed. Contains a number of options which have
 been used in testing. The ones it's set to are "optimal", so should be fine to use as-is. Has options for varying slit
 length, and slit width.
 
 =======
 Changes
 =======
+
+-------
+Ongoing
+-------
+
+* Modified script to produce overview plot for ALMA. Since there are a lot of galaxies, also a KDE plot
+  (``alma/plot_tw_speeds``)
+* Modified scripts to test slit widths/lengths for the ALMA test case (``alma/sw_comparison`` and
+  ``alma/sl_comparison``)
+* Modified MUSE data prep script for ALMA (``alma/tw_alma``)
 
 ----------
 2019/12/12
