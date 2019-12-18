@@ -25,10 +25,10 @@ os.chdir(phangs_folder)
 
 # Read in the basic galaxy info
 
-galaxy_table = fits.open('documents/phangs_sample_table_v1p1.fits')
+galaxy_table = fits.open('documents/phangs_sample_table_v1p4.fits')
 galaxy_table = Table(galaxy_table[1].data)
 
-galaxies = galaxy_table['NAME'][galaxy_table['ALMA'] == 1]
+galaxies = galaxy_table['NAME'][galaxy_table['HAS_ALMA'] == 1]
 
 galaxies = sorted(galaxies)
 

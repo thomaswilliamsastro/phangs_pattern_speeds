@@ -50,7 +50,7 @@ grid_step = 0.2
 
 # Read in the basic galaxy info
 
-galaxy_table = fits.open('documents/phangs_sample_table_v1p1.fits')
+galaxy_table = fits.open('documents/phangs_sample_table_v1p4.fits')
 galaxy_table = Table(galaxy_table[1].data)
 
 # Read in bar information for later masking
@@ -62,7 +62,7 @@ bar_galaxy, bar_rs = np.loadtxt('environment/PHANGSmasks_v2.dat',
                                 dtype=str)
 
 overwrite_pafit = False
-overwrite_bootstraps = False
+overwrite_bootstraps = True
 plot = True
 
 # Various options we can play around with for testing
@@ -234,6 +234,12 @@ for galaxy in galaxies:
 
                         ra, dec, inclination, dist, pa, pa_err = ps_functions.get_sample_table_info(galaxy,
                                                                                                     galaxy_table)
+
+                        # If the galaxy doesn't have a measured PA, skip
+
+                        if np.isnan(pa):
+                            print('PA undefined: skipping')
+                            continue
 
                         # Calculate a physical distance conversion factor from the galaxy distance.
 

@@ -91,7 +91,7 @@ plt.legend(loc='upper right',
            frameon=False)
 
 plt.ylim([-0.25, 0.5 * len(galaxies) + 0.5])
-plt.xlim([0, 50])
+plt.xlim([0, 100])
 
 ax1.yaxis.set_ticks_position('none')
 

@@ -69,9 +69,9 @@ def get_sample_table_info(galaxy, galaxy_table):
 
     for i in range(len(galaxy_table)):
         if galaxy_table['NAME'][i].strip() == galaxy_homogenised:
-            ra, dec, inclination, dist, pa, pa_err = galaxy_table['RA_DEG'][i], galaxy_table['DEC_DEG'][i], \
-                                                     galaxy_table['INCL'][i], galaxy_table['DIST'][i], \
-                                                     galaxy_table['POSANG'][i], galaxy_table['POSANG_ERR'][
+            ra, dec, inclination, dist, pa, pa_err = galaxy_table['ORIENT_RA'][i], galaxy_table['ORIENT_DEC'][i], \
+                                                     galaxy_table['ORIENT_INCL'][i], galaxy_table['DIST'][i], \
+                                                     galaxy_table['ORIENT_POSANG'][i], galaxy_table['ORIENT_POSANG_UNC'][
                                                          i]
             galaxy_found = True
             break
