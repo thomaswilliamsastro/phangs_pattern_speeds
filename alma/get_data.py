@@ -7,36 +7,36 @@ Download intensity/velocity maps and errors for all available ALMA data at highe
 
 import getpass
 import os
+import time
 
 import pexpect
-from astropy.io import fits
-from astropy.table import Table
-from tqdm import tqdm
 
-from alma.folders import phangs_folder
+from vars import phangs_folder, alma_galaxies, alma_version
 
-# TODO: Update to new ALMA data release.
+start = time.time()
 
 os.chdir(phangs_folder)
+
+if not os.path.exists('alma/'):
+    os.mkdir('alma/')
+if not os.path.exists('alma/' + alma_version):
+    os.mkdir('alma/' + alma_version)
 
 overwrite_data = False
 
 username = 'williams'
 password = getpass.getpass()
 server = 'astro-node4'
-data_folder = 'data/beegfs/astro-storage/groups/schinnerer/PHANGS/ALMA/Data_Release/' \
-              'PHANGS-ALMA-v33-by-Adam/delivery/broad_maps'
+server_folder = 'data/beegfs/astro-storage/groups/schinnerer/PHANGS/ALMA/Data_Release/'
+data_folder = 'PHANGS-ALMA-' + alma_version + '-by-Adam/broad_maps'
 
-# Open up the table for latest data release (as of 20191211)
+# Set up a log so we can refer back to the particular antenna setup
 
-galaxy_table = fits.open('documents/phangs_sample_table_v1p2.fits')
-galaxy_table = Table(galaxy_table[1].data)
-
-galaxies = galaxy_table['NAME'][galaxy_table['ALMA'] == 1]
+log = open('alma/' + alma_version + '_download_log.txt', 'w+')
 
 # For each galaxy, download the ALMA data as appropriate. Use broad maps.
 
-for galaxy in tqdm(galaxies):
+for i, galaxy in enumerate(alma_galaxies):
 
     # Construct the command to download ALMA data from the server. We want mom0, mom1 (and associated errors)
 
@@ -51,18 +51,20 @@ for galaxy in tqdm(galaxies):
     except KeyError:
         pass
 
-    print('Downloading ALMA data for ' + galaxy)
+    log.write('%d/%d: %s\n' % (i+1, len(alma_galaxies), galaxy))
+    print('%d/%d: %s' % (i+1, len(alma_galaxies), galaxy))
 
     # Setups in order of preference (most combinations, highest resolutions first).
 
     antenna_setups = ['12m+7m+tp', '12m+7m', '7m+tp', '7m']
+    setup_found = False
 
     for antenna_setup in antenna_setups:
 
         file_name = gal_low + '_' + antenna_setup + '_co21_broad_mom0.fits'
 
         command = ('ssh '
-                   + username + '@' + server + ' test -e /' + data_folder + '/' + file_name
+                   + username + '@' + server + ' test -e /' + server_folder + data_folder + '/' + file_name
                    + '; echo result: $?'
                    )
 
@@ -73,18 +75,24 @@ for galaxy in tqdm(galaxies):
         result = var_child.expect(['result: 0', 'result: 1'], timeout=600)
 
         if result == 0:
+            setup_found = True
             break
+
+    if not setup_found:
+        log.write('No suitable combination found for %s: skipping\n' % galaxy)
+    else:
+        log.write('%s antenna combination: %s\n' % (galaxy, antenna_setup))
 
     extensions = ['mom0', 'emom0', 'mom1', 'emom1']
 
     for extension in extensions:
 
-        if not os.path.exists('alma/' + galaxy + '_' + extension + '.fits') or overwrite_data:
+        if not os.path.exists('alma/' + alma_version + '/' + galaxy + '_' + extension + '.fits') or overwrite_data:
             file_name = gal_low + '_' + antenna_setup + '_co21_broad_' + extension + '.fits'
 
             command = ('scp '
-                       + username + '@' + server + ':/' + data_folder + '/' + file_name
-                       + ' alma/' + galaxy + '_' + extension + '.fits')
+                       + username + '@' + server + ':/' + server_folder + data_folder + '/' + file_name
+                       + ' alma/' + alma_version + '/' + galaxy + '_' + extension + '.fits')
 
             # SCP requires a password (input earlier), so use pexpect to pass that along. Use a 5 min timeout for large
             # files
@@ -93,5 +101,9 @@ for galaxy in tqdm(galaxies):
             var_child.expect(["password:", pexpect.EOF])
             var_child.sendline(password)
             var_child.expect(pexpect.EOF, timeout=600)
+
+log.write('Complete! Took %.2fm\n' % ((time.time()-start)/60))
+
+log.close()
 
 print('Complete!')

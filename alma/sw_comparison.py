@@ -11,7 +11,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from alma.folders import phangs_folder, plot_folder, output_folder
+from vars import phangs_folder, alma_version, alma_plot, alma_output, slit_widths, alma_galaxies, mask_outside_bars
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -19,50 +19,75 @@ matplotlib.rcParams['font.size'] = 14
 
 os.chdir(phangs_folder)
 
-galaxy = 'NGC2090'
+if not os.path.exists(alma_plot):
+    os.mkdir(alma_plot)
+if not os.path.exists(alma_plot + alma_version):
+    os.mkdir(alma_plot + alma_version)
+if not os.path.exists(alma_plot + alma_version + '/slit_width/'):
+    os.mkdir(alma_plot + alma_version + '/slit_width/')
 
-start = 1
-stop = 10
-step = 0.5
+for mask_outside_bar in mask_outside_bars:
 
-slit_widths = np.arange(start, stop + step, step)
+    for galaxy in alma_galaxies:
 
-plt.figure(figsize=(8, 6))
+        galaxy = galaxy.strip()
 
-omega_bars = np.zeros(len(slit_widths))
-omega_bars_err_up = np.zeros_like(omega_bars)
-omega_bars_err_down = np.zeros_like(omega_bars)
+        omega_bars = np.zeros(len(slit_widths))
+        omega_bars_err_up = np.zeros_like(omega_bars)
+        omega_bars_err_down = np.zeros_like(omega_bars)
 
-for i, slit_width in enumerate(slit_widths):
+        for i, slit_width in enumerate(slit_widths):
 
-    file_name = output_folder + galaxy + '/slit_width/' + galaxy + '_bmask_sw_' \
-                + str(slit_width) + '_pattern_speed_alma.txt'
+            file_name = alma_output + alma_version + '/slit_width/' + galaxy
 
-    try:
-        omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(file_name, unpack=True)
-    except OSError:
-        print(file_name)
-        omega_bar = np.nan
-        omega_bar_err_down = np.nan
-        omega_bar_err_up = np.nan
+            if mask_outside_bar:
+                file_name += '_bmask'
+            else:
+                file_name += '_nobmask'
 
-    omega_bars[i] = omega_bar
-    omega_bars_err_up[i] = omega_bar_err_up
-    omega_bars_err_down[i] = omega_bar_err_down
+            file_name += '_sw_' + str(slit_width) + '_pattern_speed_alma.txt'
 
-plt.errorbar(slit_widths, omega_bars,
-             yerr=[omega_bars_err_down, omega_bars_err_up],
-             fmt='o',
-             c='k')
+            try:
+                omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(file_name, unpack=True)
+            except OSError:
+                omega_bar = np.nan
+                omega_bar_err_down = np.nan
+                omega_bar_err_up = np.nan
 
-plt.xlabel(r'Slit Width ($^{\prime \prime}$)')
-plt.ylabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+            omega_bars[i] = omega_bar
+            omega_bars_err_up[i] = omega_bar_err_up
+            omega_bars_err_down[i] = omega_bar_err_down
 
-plt.tight_layout()
+        if np.all(np.isnan(omega_bars)):
+            print('%s not found' % galaxy)
+            continue
 
-plt.savefig(plot_folder+galaxy+'/'+galaxy+'_alma_sw_comparison.png',
-            bbox_inches='tight')
-plt.savefig(plot_folder+galaxy+'/'+galaxy+'_alma_sw_comparison.pdf',
-            bbox_inches='tight')
+        plt.figure(figsize=(8, 6))
+
+        plt.errorbar(slit_widths, omega_bars,
+                     yerr=[omega_bars_err_down, omega_bars_err_up],
+                     fmt='o',
+                     c='k')
+
+        plt.xlabel(r'Slit Width ($^{\prime \prime}$)')
+        plt.ylabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+
+        plt.tight_layout()
+
+        plot_name = alma_plot + alma_version + '/slit_width/' + galaxy
+
+        if mask_outside_bar:
+            plot_name += '_bmask'
+        else:
+            plot_name += '_nobmask'
+
+        plot_name += '_alma_sw_comparison'
+
+        plt.savefig(plot_name + '.png',
+                    bbox_inches='tight')
+        plt.savefig(plot_name + '.pdf',
+                    bbox_inches='tight')
+
+        plt.close()
 
 print('Complete!')

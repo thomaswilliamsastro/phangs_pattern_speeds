@@ -6,20 +6,22 @@ Apply Tremaine-Weinberg method to all of the PHANGS ALMA galaxies
 """
 
 import os
+import time
 import warnings
 
 import cmocean
+import corner
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pybar.pybar as pybar
 from astropy.io import fits
-from astropy.table import Table
 from astropy.wcs import WCS
 
 import ps_functions
-from alma.folders import phangs_folder, plot_folder, output_folder
-from bootstraps import bootstrap_tw
+from bootstraps import bootstrap_tw, mcmc_tw_multiple
+from vars import phangs_folder, galaxy_table, alma_version, alma_plot, alma_output, mask_outside_bars, slit_widths, \
+    slit_lengths, use_sim, n_pattern_speeds, alma_galaxies, overwrite_pafit, overwrite_bootstraps, plot
 
 warnings.simplefilter("ignore")
 
@@ -31,21 +33,18 @@ matplotlib.rcParams['font.size'] = 14
 
 np.random.seed(42)
 
+start = time.time()
+
 os.chdir(phangs_folder)
 
-if not os.path.exists(plot_folder):
-    os.mkdir(plot_folder)
-if not os.path.exists(output_folder):
-    os.mkdir(output_folder)
-
-# Read in the basic galaxy info and pull out galaxies to fit
-
-galaxy_table = fits.open('documents/phangs_sample_table_v1p4.fits')
-galaxy_table = Table(galaxy_table[1].data)
-
-galaxies = galaxy_table['NAME'][galaxy_table['HAS_ALMA'] == 1]
-
-galaxies = sorted(galaxies)
+if not os.path.exists(alma_plot):
+    os.mkdir(alma_plot)
+if not os.path.exists(alma_output):
+    os.mkdir(alma_output)
+if not os.path.exists(alma_plot + alma_version):
+    os.mkdir(alma_plot + alma_version)
+if not os.path.exists(alma_output + alma_version):
+    os.mkdir(alma_output + alma_version)
 
 # Read in bar information for later masking
 
@@ -55,37 +54,11 @@ bar_galaxy, bar_rs = np.loadtxt('environment/PHANGSmasks_v2.dat',
                                 skiprows=4,
                                 dtype=str)
 
-overwrite_pafit = False
-overwrite_bootstraps = True
-plot = True
+# And test galaxies
 
-# Various options we can play around with for testing
+# alma_galaxies = ['NGC0253']
 
-mask_outside_bars = [True]
-slit_widths = [1]
-slit_lengths = [0]
-
-# For testing, I've used: for slit widths
-
-# start = 1
-# stop = 10
-# step = 0.5
-#
-# slit_widths = np.arange(start, stop + step, step)
-
-# For slit lengths
-
-# start = 10
-# stop = 50
-# step = 5
-#
-# slit_lengths = np.arange(start, stop + step, step)
-
-# And test galaxy
-
-# galaxies = ['NGC2090']
-
-for galaxy in galaxies:
+for galaxy in alma_galaxies:
 
     galaxy = galaxy.strip()
 
@@ -98,55 +71,64 @@ for galaxy in galaxies:
             for slit_length in slit_lengths:
 
                 try:
-                    flux_hdu = fits.open('alma/' + galaxy + '_mom0.fits')[0]
+                    flux_hdu = fits.open('alma/' + alma_version + '/' + galaxy + '_mom0.fits')[0]
                 except FileNotFoundError:
                     print(galaxy + ' not found!')
                     continue
 
-                # If the length of any of 'hdu_types', 'slit_widths', or 'slit_lengths is  greater than 1 we're
-                # in test mode so move into galaxy folder accordingly
+                # Set up file names depending on the various parameters
 
-                if len(slit_widths) > 1 or len(slit_lengths) > 1:
+                file_name = alma_version + '/'
 
-                    file_name = galaxy + '/'
+                if np.sum([len(slit_widths) > 1, len(slit_lengths) > 1, len(mask_outside_bars) > 1]) > 1:
+                    raise Warning('Too many things varying!')
 
-                    if not os.path.exists(plot_folder+galaxy):
-                        os.mkdir(plot_folder+galaxy)
-                    if not os.path.exists(output_folder+galaxy):
-                        os.mkdir(output_folder+galaxy)
+                if len(slit_widths) > 1:
 
-                    # Let's set this so only one thing at a time can be changed. If the slit lengths are changing, it's
-                    # going in a slit_length folder
+                    file_name += 'slit_width/'
 
-                    elif len(slit_lengths) > 1:
+                elif len(slit_lengths) > 1:
 
-                        file_name += 'slit_length/'
+                    file_name += 'slit_length/'
 
-                    # If the slit widths are changing, it's going in a slit_width folder
+                elif mask_outside_bar:
 
-                    elif len(slit_widths) > 1:
+                    file_name += 'bmask/'
 
-                        file_name += 'slit_width/'
+                elif not mask_outside_bar:
 
-                    if not os.path.exists(plot_folder+file_name):
-                        os.mkdir(plot_folder+file_name)
-                    if not os.path.exists(output_folder+file_name):
-                        os.mkdir(output_folder+file_name)
+                    file_name += 'nobmask/'
 
                 else:
 
-                    file_name = ''
+                    raise Warning('Not sure what is going on here!')
+
+                if not os.path.exists(alma_plot + file_name):
+                    os.mkdir(alma_plot + file_name)
+                if not os.path.exists(alma_output + file_name):
+                    os.mkdir(alma_output + file_name)
+
+                if n_pattern_speeds > 1:
+                    file_name += '%d_pattern_speeds/' % n_pattern_speeds
+
+                # If we're doing a simulation then that should go in a folder of its own
+
+                if use_sim:
+                    file_name += 'sim/'
+
+                if not os.path.exists(alma_plot + file_name):
+                    os.mkdir(alma_plot + file_name)
+                if not os.path.exists(alma_output + file_name):
+                    os.mkdir(alma_output + file_name)
+
+                file_name += galaxy
 
                 # Set up file extensions for mask
 
                 if mask_outside_bar:
-                    mask_ext = '_bmask'
+                    file_name += '_bmask_'
                 else:
-                    mask_ext = '_nobmask'
-
-                # Set up file names
-
-                file_name += galaxy + mask_ext + '_'
+                    file_name += '_nobmask_'
 
                 if len(slit_lengths) > 1:
 
@@ -156,9 +138,9 @@ for galaxy in galaxies:
 
                     file_name += 'sw_%.1f_' % slit_width
 
-                pattern_speed_plot_filename = plot_folder + file_name + 'alma'
-                pattern_speed_filename = output_folder + file_name + 'pattern_speed_alma.txt'
-                bootstrap_filename = output_folder + file_name + 'bootstrap_alma.txt'
+                pattern_speed_plot_filename = alma_plot + file_name + 'alma'
+                pattern_speed_filename = alma_output + file_name + 'pattern_speed_alma.txt'
+                bootstrap_filename = alma_output + file_name + 'bootstrap_alma.txt'
 
                 # Remove any extraneous third dimensions from the ALMA data
 
@@ -173,10 +155,10 @@ for galaxy in galaxies:
                 # Read in the various .fits images we'll need.
 
                 flux = flux_hdu.data
-                flux_err = fits.open('alma/' + galaxy + '_emom0.fits')[0].data
+                flux_err = fits.open('alma/' + alma_version + '/' + galaxy + '_emom0.fits')[0].data
 
-                vel = fits.open('alma/' + galaxy + '_mom1.fits')[0].data
-                vel_err = fits.open('alma/' + galaxy + '_emom1.fits')[0].data
+                vel = fits.open('alma/' + alma_version + '/' + galaxy + '_mom1.fits')[0].data
+                vel_err = fits.open('alma/' + alma_version + '/' + galaxy + '_emom1.fits')[0].data
 
                 # Remove any 0s in the flux image, replace with NaNs
 
@@ -187,11 +169,20 @@ for galaxy in galaxies:
                 vel[idx] = np.nan
                 vel_err[idx] = np.nan
 
+                idx = np.where(np.isnan(flux))
+
                 if np.all(np.isnan(flux)):
                     print('No flux detected. Skipping')
                     continue
 
                 ra, dec, inclination, dist, pa, pa_err = ps_functions.get_sample_table_info(galaxy, galaxy_table)
+
+                # TODO: These have been raised as issues and should be fixed shortly, at which point remove these lines
+
+                if galaxy == 'NGC0300':
+                    pa = 114.3  # From Chris' 2014 paper
+                if galaxy == 'NGC5128':
+                    pa += 90
 
                 # This won't work for an inclination of 90 so if it is, skip
 
@@ -232,7 +223,8 @@ for galaxy in galaxies:
 
                 # Subtract any residual velocity
 
-                vel -= v_sys
+                if not use_sim:
+                    vel -= v_sys
 
                 # Set up a grid of x- and y-coordinates
 
@@ -242,6 +234,34 @@ for galaxy in galaxies:
                 grid_y = (np.arange(grid_shape[0]) - y_cen) * grid_step
 
                 x_coords, y_coords = np.meshgrid(grid_x, grid_y)
+
+                if use_sim:
+                    rot_matrix = np.matrix([[np.cos(pa * np.pi / 180), np.sin(pa * np.pi / 180)],
+                                            [-np.sin(pa * np.pi / 180), np.cos(pa * np.pi / 180)]])
+
+                    x_rot, y_rot = np.asarray(
+                        rot_matrix * np.vstack([x_coords.flatten(), y_coords.flatten()]))
+
+                    x_rot = x_rot.reshape(grid_shape)
+                    y_rot = y_rot.reshape(grid_shape)
+
+                    # We want to inject a fake velocity field of 50 km/s/kpc
+
+                    vel = 50 * y_rot * kpc_per_arcsec * np.sin(inclination * np.pi / 180)
+                    vel_err = 50 * np.ones(vel.shape)
+
+                    r = np.sqrt(x_rot ** 2 + y_rot ** 2)
+
+                    flux = np.exp(-0.5 * r)
+                    flux *= 10 / np.nanmax(flux)
+                    flux_err = 0.1 * flux
+
+                    # And mask to match the observation FOV
+
+                    flux[idx] = np.nan
+                    flux_err[idx] = np.nan
+                    vel[idx] = np.nan
+                    vel_err[idx] = np.nan
 
                 if mask_outside_bar:
 
@@ -269,7 +289,6 @@ for galaxy in galaxies:
                         print('No bar information found. Not masking anything.')
 
                 if len(slit_lengths) > 1:
-
                     rot_matrix = np.matrix([[np.cos(pa * np.pi / 180), np.sin(pa * np.pi / 180)],
                                             [-np.sin(pa * np.pi / 180), np.cos(pa * np.pi / 180)]])
 
@@ -325,7 +344,6 @@ for galaxy in galaxies:
                 m, m_err, c, c_err = ps_functions.odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
 
                 if m < 0:
-
                     pa += 180
 
                     bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
@@ -343,25 +361,32 @@ for galaxy in galaxies:
 
                     m, m_err, c, c_err = ps_functions.odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
 
-                if plot:
+                # Convert fitted numbers to something usefully physical -- km/s/kpc, and get rid of the
+                # inclination
+
+                km_s_kpc_conversion = (np.sin(inclination * np.pi / 180) * kpc_per_arcsec) ** -1
+
+                omega_bar = m.copy()
+                omega_bar_err = m_err.copy()
+
+                omega_bar *= km_s_kpc_conversion
+                omega_bar_err *= km_s_kpc_conversion
+
+                if plot and n_pattern_speeds == 1:
 
                     # Plot on a best fit line and associated errors for this single bootstrap
 
-                    # Convert fitted numbers to something usefully physical -- km/s/kpc, and get rid of the
-                    # inclination
+                    x_max = 1.2*np.nanpercentile(x_tw, 99)
+                    x_min = 1.2*np.nanpercentile(x_tw, 1)
 
-                    km_s_kpc_conversion = (np.sin(inclination * np.pi / 180) * kpc_per_arcsec) ** -1
+                    # x_min, x_max = 1.2 * np.nanmin(x_tw), 1.2 * np.nanmax(x_tw)
 
-                    omega_bar = m.copy()
-                    omega_bar_err = m_err.copy()
-
-                    omega_bar *= km_s_kpc_conversion
-                    omega_bar_err *= km_s_kpc_conversion
-
-                    x_min, x_max = 1.2 * np.nanmin(x_tw), 1.2 * np.nanmax(x_tw)
                     x_fit = np.linspace(x_min, x_max, 500)
 
-                    y_min, y_max = 1.2 * np.nanmin(v_tw), 1.7 * np.nanmax(v_tw)
+                    y_max = 1.2*np.nanpercentile(v_tw, 99)
+                    y_min = 1.2*np.nanpercentile(v_tw, 1)
+
+                    # y_min, y_max = 1.2 * np.nanmin(v_tw), 1.7 * np.nanmax(v_tw)
 
                     n_lines = 200
 
@@ -488,14 +513,230 @@ for galaxy in galaxies:
                                 bbox_inches='tight')
                     plt.close()
 
-                # Put everything into the bootstrap
+                if use_sim:
 
-                bootstrap_tw(flux, flux_err, vel, vel_err, grid_step=grid_step, slit_width=slit_width,
-                             x_cen=x_cen, y_cen=y_cen, centering_err=1, pa=pa, pa_err=pa_err,
-                             inclination=inclination,
-                             dist=dist, bootstrap_filename=bootstrap_filename,
-                             overwrite_bootstraps=overwrite_bootstraps,
-                             n_bootstraps=1000, pattern_speed_filename=pattern_speed_filename,
-                             )
+                    # We're testing the FOV here, not the position angle. Save out the results of the one fit
 
-print('Complete!')
+                    np.savetxt(pattern_speed_filename, np.c_[omega_bar, omega_bar_err, omega_bar_err],
+                               header='omega_bar, omega_barr_err_up, omega_bar_err_down (all km/s/kpc)')
+
+                else:
+
+                    if n_pattern_speeds <= 0:
+
+                        raise Warning('This is not a number of pattern speeds I can deal with')
+
+                    elif n_pattern_speeds == 1:
+
+                        # Put everything into the bootstrap
+
+                        bootstrap_tw(flux, flux_err, vel, vel_err, grid_step=grid_step, slit_width=slit_width,
+                                     x_cen=x_cen, y_cen=y_cen, centering_err=1, pa=pa, pa_err=pa_err,
+                                     inclination=inclination,
+                                     dist=dist, bootstrap_filename=bootstrap_filename,
+                                     overwrite_bootstraps=overwrite_bootstraps,
+                                     n_bootstraps=1000, pattern_speed_filename=pattern_speed_filename,
+                                     )
+
+                    elif n_pattern_speeds > 1:
+
+                        bootstrap_filename = bootstrap_filename.replace('bootstrap', 'samples').replace('txt', 'pkl')
+
+                        n_steps, n_walkers = 1000, 50
+
+                        sampler, pattern_speeds = mcmc_tw_multiple(flux, flux_err, vel, vel_err,
+                                                                   n_pattern_speeds=n_pattern_speeds,
+                                                                   grid_step=grid_step, slit_width=slit_width,
+                                                                   x_cen=x_cen, y_cen=y_cen, centering_err=1,
+                                                                   pa=pa, pa_err=pa_err,
+                                                                   inclination=inclination, dist=dist,
+                                                                   n_steps=n_steps, n_walkers=n_walkers,
+                                                                   samples_filename=bootstrap_filename,
+                                                                   overwrite_samples=overwrite_bootstraps,
+                                                                   pattern_speed_filename=pattern_speed_filename,
+                                                                   )
+
+                        if plot:
+
+                            n_dim = 2 + n_pattern_speeds
+
+                            labels = [r'$r_0$', 'c']
+                            labels.extend([r'$m_%d$' % (i + 1) for i in range(n_pattern_speeds)])
+
+                            fig, axes = plt.subplots(n_dim, figsize=(10, 7), sharex=True)
+                            samples = sampler.get_chain()
+                            for i in range(n_dim):
+                                ax = axes[i]
+                                ax.plot(samples[:, :, i], "k", alpha=0.3)
+                                ax.set_xlim(0, len(samples))
+                                ax.set_ylabel(labels[i])
+                                ax.yaxis.set_label_coords(-0.1, 0.5)
+
+                            axes[-1].set_xlabel("Step number")
+
+                            plt.savefig(pattern_speed_plot_filename + '_steps.png',
+                                        bbox_inches='tight')
+                            plt.savefig(pattern_speed_plot_filename + '_steps.pdf',
+                                        bbox_inches='tight')
+                            plt.close()
+
+                            flat_samples = sampler.get_chain(discard=int(n_steps / 2), flat=True)
+
+                            fig = corner.corner(flat_samples, labels=labels,
+                                                truth_color='k')
+
+                            plt.savefig(pattern_speed_plot_filename + '_corner.png',
+                                        bbox_inches='tight')
+                            plt.savefig(pattern_speed_plot_filename + '_corner.pdf',
+                                        bbox_inches='tight')
+                            plt.close()
+
+                            # Finally, plot on best-fit line
+
+                            x_min, x_max = 1.2 * np.nanmin(x_tw), 1.2 * np.nanmax(x_tw)
+                            x_fit = np.linspace(x_min, x_max, 500)
+
+                            y_min, y_max = 1.2 * np.nanmin(v_tw), 1.7 * np.nanmax(v_tw)
+                            y_median = np.zeros([n_pattern_speeds, len(x_fit)])
+                            y_upper = y_median.copy()
+                            y_lower = y_median.copy()
+
+                            n_lines = 200
+
+                            # Use the samples to calculate the values and uncertainties
+
+                            for i in range(n_pattern_speeds):
+
+                                y_fit_single = np.zeros([n_lines, len(x_fit)])
+
+                                for line in range(n_lines):
+                                    choice = np.random.randint(low=0, high=flat_samples.shape[0])
+
+                                    y_fit_single[line, :] = x_fit * flat_samples[choice, 2 + i] + flat_samples[
+                                        choice, 1]
+
+                                y_median[i, :] = np.nanmedian(y_fit_single, axis=0)
+                                y_upper[i, :] = np.percentile(y_fit_single, 84, axis=0)
+                                y_lower[i, :] = np.percentile(y_fit_single, 16, axis=0)
+
+                            # Calculate the position of the slits
+
+                            slit_positions = bar.y_slits / grid_step
+
+                            # Calculate the axis line
+
+                            rad = np.sqrt((flux.shape[0] - y_cen) ** 2 + (flux.shape[1] - x_cen) ** 2)
+                            ang = [0, np.pi] + np.radians(pa)
+
+                            # Plotting
+
+                            # Set up colourbar limits for the image
+
+                            vmin_flux = np.nanpercentile(flux, 0.5)
+                            vmax_flux = np.nanpercentile(flux, 99.75)
+
+                            vmax_vel = 150
+                            vmin_vel = -150
+
+                            plt.figure(figsize=(6, 6))
+
+                            plt.subplot(221)
+
+                            plt.imshow(flux,
+                                       cmap=cmocean.cm.gray_r,
+                                       origin='lower', interpolation='none',
+                                       vmin=vmin_flux, vmax=vmax_flux)
+
+                            colour = iter(cmocean.cm.thermal(np.linspace(0, 1, len(slit_positions))))
+
+                            # Plot only 25% of the slits
+
+                            n_slits = 4
+
+                            # Pull out the LoN matrix.
+
+                            lon_matrix = bar._mat_lon * bar._mat_NE
+
+                            for i, slit_position in enumerate(slit_positions):
+                                c = next(colour)
+
+                                if i % n_slits == 0:
+                                    # Use the rotation matrix to transform into the LoN plane.
+
+                                    x0, x1 = -flux.shape[1], flux.shape[1]
+
+                                    coord_rotate = np.asarray(np.array([x0, slit_position]) * lon_matrix)
+                                    x0_rotate, y0_rotate = coord_rotate[0][0], coord_rotate[0][1]
+
+                                    coord_rotate = np.asarray(np.array([x1, slit_position]) * lon_matrix)
+                                    x1_rotate, y1_rotate = coord_rotate[0][0], coord_rotate[0][1]
+
+                                    plt.plot([x0_rotate + x_cen, x1_rotate + x_cen],
+                                             [y0_rotate + y_cen, y1_rotate + y_cen],
+                                             c=c, linewidth=1,
+                                             )
+
+                            plt.xlim([0, flux.shape[1]])
+                            plt.ylim([0, flux.shape[0]])
+
+                            plt.axis('off')
+
+                            plt.subplot(222)
+
+                            plt.imshow(vel,
+                                       cmap=cmocean.cm.balance,
+                                       origin='lower', interpolation='none',
+                                       vmin=vmin_vel, vmax=vmax_vel)
+
+                            # Also plot on the axis line
+
+                            plt.plot(-rad * np.sin(ang) + x_cen, rad * np.cos(ang) + y_cen, 'k--', linewidth=2)
+
+                            plt.xlim([0, flux.shape[1]])
+                            plt.ylim([0, flux.shape[0]])
+
+                            plt.axis('off')
+
+                            ax = plt.subplot(212)
+
+                            colour = iter(cmocean.cm.thermal(np.linspace(0, 1, len(x_tw))))
+
+                            for i in range(len(x_tw)):
+                                c = next(colour)
+
+                                plt.errorbar(x_tw[i], v_tw[i],
+                                             xerr=x_tw_err[i], yerr=v_tw_err[i],
+                                             marker='o', c=c, linestyle='none')
+
+                            for i in range(n_pattern_speeds):
+                                plt.plot(x_fit, y_median[i, :], c='k', lw=2)
+                                plt.fill_between(x_fit, y_upper[i, :], y_lower[i, :],
+                                                 edgecolor='k', facecolor='k', alpha=0.25)
+
+                            plt.xlim([x_min, x_max])
+                            plt.ylim([y_min, y_max])
+
+                            plot_text = ''
+
+                            for i in range(n_pattern_speeds):
+                                plot_text += r'$\Omega_{p,%d} = %.2f^{+%.2f}_{-%.2f}\, \mathrm{km\,s}^{-1} \mathrm{' \
+                                             r'kpc}^{-1}$' % (i + 1, pattern_speeds[i, 0], pattern_speeds[i, 1],
+                                                              pattern_speeds[i, 2])
+                                if i != n_pattern_speeds - 1:
+                                    plot_text += '\n'
+
+                            plt.text(0.05, 0.95,
+                                     plot_text,
+                                     transform=ax.transAxes,
+                                     verticalalignment='top',
+                                     bbox=dict(facecolor='white', alpha=0.7))
+
+                            plt.xlabel(r'<$x$> $\left(^{\prime \prime}\right)$')
+                            plt.ylabel(r'<$v$> $\left(\mathrm{km\,s}^{-1}\right)$')
+
+                            plt.savefig(pattern_speed_plot_filename + '.png',
+                                        bbox_inches='tight')
+                            plt.savefig(pattern_speed_plot_filename + '.pdf',
+                                        bbox_inches='tight')
+
+print('Complete! Took %.2fm' % ((time.time()-start)/60))

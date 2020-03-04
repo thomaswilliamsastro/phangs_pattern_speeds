@@ -10,7 +10,7 @@ import os
 
 import pexpect
 
-from muse.folders import phangs_folder
+from vars import phangs_folder, muse_galaxies
 
 os.chdir(phangs_folder)
 
@@ -24,14 +24,11 @@ password = getpass.getpass()
 server = 'astro-node4'
 data_folder = '/data/beegfs/astro-storage/groups/schinnerer/pessa/DR1/data'
 
-# List of available galaxies
+# For each galaxy, download the MUSE data as appropriate.
 
-galaxies = ['NGC1087', 'NGC1512', 'NGC1672', 'NGC3351', 'NGC4254', 'NGC5068',
-            'IC5332', 'NGC1365', 'NGC1566', 'NGC2835', 'NGC3627', 'NGC4535', 'NGC628']
+# TODO: When DR2 appears, update. Refactor this code to version the files into the right folder.
 
-# For each galaxy, download the MUSE data as appropriate. Use broad maps.
-
-for galaxy in galaxies:
+for galaxy in muse_galaxies:
 
     # Construct the command to download MUSE data from the server.
 
