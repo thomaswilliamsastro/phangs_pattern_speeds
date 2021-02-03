@@ -107,3 +107,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+test_bed.py
+.DS_Store
+sims/makemocks.py
