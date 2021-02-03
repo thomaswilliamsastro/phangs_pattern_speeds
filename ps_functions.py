@@ -5,8 +5,6 @@ A number of functions I keep reusing throughout code.
 @author: Tom Williams
 """
 
-import copy
-
 import numpy as np
 from pafit.fit_kinematic_pa import fit_kinematic_pa as pafit
 from scipy.odr import Model, ODR, RealData
@@ -55,31 +53,17 @@ def pafit_wrapper(vel, vel_err, x_cen, y_cen):
     return pafit_pa, pafit_pa_err, v_sys
 
 
-def get_sample_table_info(galaxy, galaxy_table):
+def get_sample_table_info(galaxy, galaxy_table, parameters):
     # From the sample table overview, pull out the RA/Dec, inclination and distance.
 
-    galaxy_found = False
+    gal_dict = {}
 
-    galaxy_homogenised = copy.copy(galaxy)
+    gal_row = galaxy_table[galaxy_table['name'] == galaxy]
 
-    # If the leading 0 after NGC is missing (only actually a problem for NGC628), force it in.
+    for parameter in parameters:
+        gal_dict[parameter] = gal_row[parameter][0]
 
-    if galaxy_homogenised[:3] == 'NGC' and len(galaxy_homogenised) == 6:
-        galaxy_homogenised = galaxy_homogenised[:3] + '0' + galaxy_homogenised[3:]
-
-    for i in range(len(galaxy_table)):
-        if galaxy_table['NAME'][i].strip() == galaxy_homogenised:
-            ra, dec, inclination, dist, pa, pa_err = galaxy_table['RA_DEG'][i], galaxy_table['DEC_DEG'][i], \
-                                                     galaxy_table['INCL'][i], galaxy_table['DIST'][i], \
-                                                     galaxy_table['POSANG'][i], galaxy_table['POSANG_ERR'][
-                                                         i]
-            galaxy_found = True
-            break
-
-    if not galaxy_found:
-        raise Warning(galaxy + ' not found!')
-
-    return ra, dec, inclination, dist, pa, pa_err
+    return gal_dict
 
 
 def bar_mask(x_grid, y_grid, pa, bar_r):

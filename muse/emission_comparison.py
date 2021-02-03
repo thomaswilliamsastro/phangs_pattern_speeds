@@ -11,7 +11,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from muse.folders import phangs_folder, plot_folder, output_folder
+from vars import phangs_folder, muse_version, muse_plot, muse_output, muse_galaxies
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -19,7 +19,12 @@ matplotlib.rcParams['font.size'] = 14
 
 os.chdir(phangs_folder)
 
-galaxy = 'NGC1512'
+if not os.path.exists(muse_plot):
+    os.mkdir(muse_plot)
+if not os.path.exists(muse_plot + muse_version):
+    os.mkdir(muse_plot + muse_version)
+if not os.path.exists(muse_plot + muse_version + '/emission/'):
+    os.mkdir(muse_plot + muse_version + '/emission/')
 
 labels = [r'$M_\ast$', 'Flux', r'H$\alpha$']
 
@@ -43,91 +48,108 @@ for hdu_type in ['mass', 'flux', 'ha']:
 
             methods.append(hdu_type + star_ext + mask_ext)
 
-plt.figure(figsize=(8, 6))
+for galaxy in muse_galaxies:
 
-position = 0
+    galaxy_found = True
 
-for method in methods:
+    print('Starting %s' % galaxy)
 
-    try:
-        omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(
-            output_folder + galaxy + '/emission/' + galaxy+'_' + method + '_pattern_speed_muse.txt',
-            unpack=True)
-    except OSError:
-        print(method)
-        omega_bar = 1
-        omega_bar_err_down = 1
-        omega_bar_err_up = 1
+    plt.figure(figsize=(8, 6))
+    ax = plt.subplot(111)
 
-    if '_nosmask_nobmask' in method:
-        c = 'r'
+    position = 0
 
-        plt.axhline(position + 0.375,
-                    c='k',
-                    ls='--')
+    for method in methods:
 
-        if method == methods[0]:
-            plt.errorbar(-100, -100,
-                         xerr=1,
-                         fmt='o',
-                         c=c,
-                         label='No star mask, no bar mask')
+        file_name = muse_output + muse_version + '/' + method + '/' + galaxy + '_' + method + '_pattern_speed_muse.txt'
 
-    elif '_nosmask_bmask' in method:
+        try:
+            omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(file_name, unpack=True)
+        except OSError:
+            galaxy_found = False
+            continue
 
-        c = 'g'
+        if '_nosmask_nobmask' in method:
+            c = 'r'
 
-        if method == methods[1]:
-            plt.errorbar(-100, -100,
-                         xerr=1,
-                         fmt='o',
-                         c=c,
-                         label='No star mask, bar mask')
+            plt.axhline(position + 0.375,
+                        c='k',
+                        ls='--')
 
-    elif '_smask_nobmask' in method:
+            if method == methods[0]:
+                plt.errorbar(-100, -100,
+                             xerr=1,
+                             fmt='o',
+                             c=c,
+                             label='No star mask, no bar mask')
 
-        c = 'gold'
+        elif '_nosmask_bmask' in method:
+            c = 'g'
 
-        if method == methods[2]:
-            plt.errorbar(-100, -100,
-                         xerr=1,
-                         fmt='o',
-                         c=c,
-                         label='Star mask, no bar mask')
+            if method == methods[1]:
+                plt.errorbar(-100, -100,
+                             xerr=1,
+                             fmt='o',
+                             c=c,
+                             label='No star mask, bar mask')
 
-    else:
-        c = 'b'
+        elif '_smask_nobmask' in method:
+            c = 'gold'
 
-        if method == methods[3]:
-            plt.errorbar(-100, -100,
-                         xerr=1,
-                         fmt='o',
-                         c=c,
-                         label='Star mask, bar mask')
+            if method == methods[2]:
+                plt.errorbar(-100, -100,
+                             xerr=1,
+                             fmt='o',
+                             c=c,
+                             label='Star mask, no bar mask')
 
-    plt.errorbar(omega_bar, position - 0.125 / 2,
-                 xerr=np.array([[omega_bar_err_down, omega_bar_err_up]]).T,
-                 fmt='o',
-                 c=c)
+        else:
+            c = 'b'
 
-    position += 0.125
+            if method == methods[3]:
+                plt.errorbar(-100, -100,
+                             xerr=1,
+                             fmt='o',
+                             c=c,
+                             label='Star mask, bar mask')
 
-plt.ylim([-0.125, 0.5 * len(labels) + 0.5 - 0.125 / 2])
+        plt.errorbar(omega_bar, position - 0.125 / 2,
+                     xerr=np.array([[omega_bar_err_down, omega_bar_err_up]]).T,
+                     fmt='o',
+                     c=c)
 
-xlims = plt.xlim()
-plt.xlim([0.4*np.nanmin(omega_bar), xlims[-1]])
+        position += 0.125
 
-plt.yticks(0.5 * np.array(range(len(labels))) + 0.125, labels)
-plt.xlabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+    if not galaxy_found:
+        plt.close()
+        print('%s not found: skipping' % galaxy)
+        continue
 
-plt.legend(loc='upper right',
-           frameon=False)
+    plt.ylim([-0.125, 0.5 * len(labels) + 0.5 - 0.125 / 2])
 
-plt.tight_layout()
+    xlims = plt.xlim()
+    plt.xlim([0.4 * np.nanmin(omega_bar), xlims[-1]])
 
-plt.savefig(plot_folder+galaxy+'/'+galaxy+'_muse_emission_comparison.png',
-            bbox_inches='tight')
-plt.savefig(plot_folder+galaxy+'/'+galaxy+'_muse_emission_comparison.pdf',
-            bbox_inches='tight')
+    plt.yticks(0.5 * np.array(range(len(labels))) + 0.125, labels)
+    plt.xlabel(r'$\Omega_{p}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+
+    plt.text(0.05, 0.95, galaxy,
+             ha='left', va='top',
+             fontweight='bold',
+             transform=ax.transAxes)
+
+    plt.legend(loc='upper right',
+               frameon=False)
+
+    plt.tight_layout()
+
+    plot_file_name = muse_plot + muse_version + '/emission/' + galaxy + '_muse_emission_comparison'
+
+    plt.savefig(plot_file_name + '.png',
+                bbox_inches='tight')
+    plt.savefig(plot_file_name + '.pdf',
+                bbox_inches='tight')
+
+    plt.close()
 
 print('Complete!')

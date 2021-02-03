@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
 
-from muse.folders import phangs_folder, plot_folder, output_folder
+from vars import phangs_folder, muse_version, muse_galaxies, muse_plot, muse_output, hdu_types, star_masks, \
+    mask_outside_bars
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -20,52 +21,106 @@ matplotlib.rcParams['font.size'] = 14
 
 os.chdir(phangs_folder)
 
-galaxies = ['NGC1087', 'NGC1512', 'NGC1672', 'NGC3351', 'NGC4254', 'NGC5068',
-            'IC5332', 'NGC1365', 'NGC1566', 'NGC2835', 'NGC3627', 'NGC4535', 'NGC628']
+for hdu_type in hdu_types:
 
-galaxies = sorted(galaxies)
+    for star_mask in star_masks:
 
-plt.figure(figsize=(4, 0.5 * len(galaxies)))
-ax1 = plt.subplot(1, 1, 1)
+        for mask_outside_bar in mask_outside_bars:
 
-frame1 = plt.gca()
+            plot_filename = muse_plot + muse_version + '/' + hdu_type
 
-position = 0
+            if star_mask:
+                plot_filename += '_smask'
+            else:
+                plot_filename += '_nosmask'
 
-colours = iter(cm.rainbow(np.linspace(0, 1, len(galaxies))))
+            if mask_outside_bar:
+                plot_filename += '_bmask'
+            else:
+                plot_filename += '_nobmask'
 
-for galaxy in galaxies:
-    c = next(colours)
+            plot_filename += '_pattern_speeds_overview_muse'
 
-    try:
-        omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(
-            output_folder + galaxy + '_mass_smask_bmask_pattern_speed_muse.txt',
-            unpack=True)
+            plt.figure(figsize=(4, 0.5 * len(muse_galaxies) + 1))
 
-        if omega_bar < 0:
-            print(galaxy)
+            position = 0
 
-        plt.errorbar(omega_bar, position,
-                     xerr=np.array([[omega_bar_err_down, omega_bar_err_up]]).T,
-                     fmt='o',
-                     c=c)
-    except OSError:
-        print(galaxy + ' not found!')
-        pass
+            colours = iter(cm.rainbow(np.linspace(0, 1, len(muse_galaxies))))
 
-    position += 0.5
+            for galaxy in muse_galaxies:
+                c = next(colours)
 
-plt.yticks(0.5 * np.array(range(len(galaxies))), galaxies)
-plt.xlabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+                try:
 
-plt.ylim([-0.25, 0.5 * len(galaxies) - 0.25])
-plt.xlim([0, 60])
+                    muse_filename = muse_output + muse_version + '/' + hdu_type
 
-plt.tight_layout()
+                    if star_mask:
+                        muse_filename += '_smask'
+                    else:
+                        muse_filename += '_nosmask'
 
-plt.savefig(plot_folder + 'pattern_speeds_overview_muse.png',
-            bbox_inches='tight')
-plt.savefig(plot_folder + 'pattern_speeds_overview_muse.pdf',
-            bbox_inches='tight')
+                    if mask_outside_bar:
+                        muse_filename += '_bmask/'
+                    else:
+                        muse_filename += '_nobmask/'
+
+                    muse_filename += galaxy + '_' + hdu_type
+
+                    if star_mask:
+                        muse_filename += '_smask'
+                    else:
+                        muse_filename += '_nosmask'
+
+                    if mask_outside_bar:
+                        muse_filename += '_bmask'
+                    else:
+                        muse_filename += '_nobmask'
+
+                    muse_filename += '_pattern_speed_muse.txt'
+
+                    omega_bar, omega_bar_err_up, omega_bar_err_down = np.loadtxt(muse_filename, unpack=True)
+
+                    if omega_bar < 0:
+                        print(galaxy)
+
+                    if hdu_type == 'toy_sim':
+                        omega_bar -= 50
+
+                    plt.errorbar(omega_bar, position,
+                                 xerr=np.array([[omega_bar_err_down, omega_bar_err_up]]).T,
+                                 fmt='o',
+                                 c=c)
+                except OSError:
+                    print(galaxy + ' not found!')
+                    pass
+
+                position += 0.5
+
+            if hdu_type == 'toy_sim':
+                plt.axvline(0, c='k', ls='--', lw=2)
+
+            if hdu_type == 'toy_sim':
+                x_label = r'$\Omega_{p, \mathrm{obs}}-\Omega_{p, \mathrm{true}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$'
+            else:
+                x_label = r'$\Omega_{p}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$'
+
+            plt.yticks(0.5 * np.array(range(len(muse_galaxies))), muse_galaxies)
+            plt.xlabel(x_label)
+
+            plt.ylim([-0.25, 0.5 * len(muse_galaxies) - 0.25])
+
+            if hdu_type == 'toy_sim':
+                plt.xlim([-10, 10])
+            else:
+                plt.xlim([0, 60])
+
+            plt.tight_layout()
+
+            plt.savefig(plot_filename + '.png',
+                        bbox_inches='tight')
+            plt.savefig(plot_filename + '.pdf',
+                        bbox_inches='tight')
+
+            plt.close()
 
 print('Complete!')
