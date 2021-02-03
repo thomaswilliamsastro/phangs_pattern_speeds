@@ -6,6 +6,7 @@ Apply Tremaine-Weinberg method to all of the PHANGS MUSE galaxies
 """
 
 import os
+import sys
 import time
 import warnings
 
@@ -16,11 +17,14 @@ import numpy as np
 import pybar.pybar as pybar
 from astropy.io import fits
 from astropy.wcs import WCS
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+from reproject import reproject_interp
+
+sys.path.append(os.getcwd())
 
 import ps_functions
 from bootstraps import bootstrap_tw
-from vars import phangs_folder, muse_version, muse_galaxies, muse_plot, muse_output, galaxy_table, overwrite_pafit, \
-    overwrite_bootstraps, plot, hdu_types, mask_outside_bars, star_masks, slit_widths, slit_lengths, n_pattern_speeds
+from vars import phangs_folder, muse_version, muse_galaxies, muse_plot, muse_output, galaxy_table, overwrite_bootstraps, plot, hdu_types, mask_outside_bars, star_masks, slit_widths, slit_lengths, n_pattern_speeds
 
 warnings.simplefilter("ignore")
 
@@ -49,19 +53,17 @@ if not os.path.exists(muse_output + muse_version):
 
 grid_step = 0.2
 
-# Read in bar information for later masking
+null_hypothesis = False
+fov_check = False
 
-bar_galaxy, bar_rs = np.loadtxt('environment/PHANGSmasks_v2.dat',
-                                usecols=(0, 12),
-                                unpack=True,
-                                skiprows=4,
-                                dtype=str)
-
-# Test galaxy
-
-# muse_galaxies = ['NGC628']
+# muse_galaxies = ['ngc3351']
 
 for galaxy in muse_galaxies:
+
+    galaxy = galaxy.upper()
+
+    if muse_version == 'DR1.0' and galaxy == 'NGC0628':
+        galaxy = 'NGC628'
 
     print('Beginning ' + galaxy)
 
@@ -122,6 +124,12 @@ for galaxy in muse_galaxies:
                             if n_pattern_speeds > 1:
                                 file_name += '%d_pattern_speeds/' % n_pattern_speeds
 
+                            if null_hypothesis:
+                                file_name += 'null/'
+
+                            if fov_check:
+                                file_name += 'fov_check/'
+
                             if not os.path.exists(muse_plot + file_name):
                                 os.mkdir(muse_plot + file_name)
                             if not os.path.exists(muse_output + file_name):
@@ -154,9 +162,16 @@ for galaxy in muse_galaxies:
                             if len(cov_factor_sigmas) > 1:
                                 file_name += 'cov_sig_%d_' % cov_factor_sigma
 
+                            if null_hypothesis:
+                                file_name += 'null_'
+
+                            if fov_check:
+                                file_name += 'fov_check_'
+
                             pattern_speed_plot_filename = muse_plot + file_name + 'muse'
                             pattern_speed_filename = muse_output + file_name + 'pattern_speed_muse.txt'
                             bootstrap_filename = muse_output + file_name + 'bootstrap_muse.txt'
+                            max_r_filename = muse_output + file_name + 'max_r.npy'
 
                             # Read in the various .fits images we'll need.
 
@@ -171,58 +186,75 @@ for galaxy in muse_galaxies:
 
                             if hdu_type == 'flux':
 
-                                flux = hdu[2].data
-                                snr = hdu[3].data
+                                flux = hdu['FLUX'].data
+                                snr = hdu['SNR'].data
                                 flux_err = flux / snr
 
-                                vel = hdu[6].data
-                                vel_err = hdu[7].data
+                                vel = hdu['V_STARS'].data
+                                vel_err = hdu['FORM_ERR_V_STARS'].data
 
                             # Mass weighted
 
-                            elif hdu_type == 'mass':
+                            elif 'mass' in hdu_type:
 
-                                flux = hdu[115].data
-                                flux_err = hdu[116].data
+                                flux = hdu['STELLAR_MASS_DENSITY'].data
+                                flux_err = hdu['STELLAR_MASS_DENSITY_ERR'].data
 
-                                vel = hdu[6].data
-                                vel_err = hdu[7].data
+                                if 'spitzer' in hdu_type:
+                                    # Read in the Spitzer heaader and reproject to the MUSE scale
+
+                                    hdr = hdu['STELLAR_MASS_DENSITY'].header
+                                    nans = np.where(np.isnan(flux.data))
+
+                                    flux = fits.open('spitzer_irac/' + galaxy + '.phot.2.rs.fits')[0]
+
+                                    flux, _ = reproject_interp(flux, hdr)
+                                    flux[nans] = np.nan
+
+                                    # Throw in a 10% flux uncertainty for now
+                                    flux_err = 0.1 * flux
+
+                                vel = hdu['V_STARS'].data
+                                vel_err = hdu['FORM_ERR_V_STARS'].data
 
                             # H-alpha
 
                             elif hdu_type == 'ha':
 
-                                flux = hdu[80].data
-                                flux_err = hdu[81].data
+                                flux = hdu['HA6562_FLUX'].data
+                                flux_err = hdu['HA6562_FLUX_ERR'].data
 
-                                vel = hdu[82].data
-                                vel_err = hdu[83].data
+                                vel = hdu['HA6562_VEL'].data
+                                vel_err = hdu['HA6562_VEL_ERR'].data
 
                             elif 'toy_sim' in hdu_type:
 
                                 # Setup arrays for the simulation
 
-                                flux = np.zeros(hdu[80].data.shape)
+                                flux = np.zeros(hdu['HA6562_FLUX'].data.shape)
                                 flux_err = flux.copy()
 
-                                vel = np.zeros(hdu[82].data.shape)
+                                vel = np.zeros(hdu['HA6562_VEL'].data.shape)
                                 vel_err = vel.copy()
 
                                 # We also want a mask to mimic the FOV of the observations
-                                mask = hdu[80].data
+                                mask = hdu['HA6562_FLUX'].data
                                 mask = np.isnan(mask)
 
                                 # If we're testing the covering factor, put that in here
 
                                 if 'cov' in hdu_type:
-                                    obs_flux = hdu[80].data
-                                    obs_flux_err = hdu[81].data
+                                    obs_flux = hdu['HA6562_FLUX'].data
+                                    obs_flux_err = hdu['HA6562_FLUX_ERR'].data
 
                                     mask[obs_flux / obs_flux_err <= cov_factor_sigma] = np.nan
 
                             else:
 
                                 raise Warning('%s not a valid selection!' % hdu_type)
+
+                            flux_pristine = flux.copy()
+                            vel_pristine = vel.copy()
 
                             if star_mask:
                                 # Do a simple star mask by velocities.
@@ -234,14 +266,110 @@ for galaxy in muse_galaxies:
                                 vel[star_mask_idx] = np.nan
                                 vel_err[star_mask_idx] = np.nan
 
-                            ra, dec, inclination, dist, pa, pa_err = ps_functions.get_sample_table_info(galaxy,
-                                                                                                        galaxy_table)
+                            # Pull out parameters we need from the sample table.
+
+                            sample_table_parameters = ['orient_ra', 'orient_dec',
+                                                       'orient_ra_unc', 'orient_dec_unc',
+                                                       'orient_incl', 'dist',
+                                                       'orient_posang', 'orient_posang_unc',
+                                                       'morph_bar_r'
+                                                       ]
+
+                            galaxy_edit = galaxy
+                            if galaxy_edit == 'NGC628':
+                                galaxy_edit = 'NGC0628'
+
+                            parameters_dict = ps_functions.get_sample_table_info(galaxy_edit.lower(), galaxy_table,
+                                                                                 sample_table_parameters)
+
+                            ra = parameters_dict['orient_ra']
+                            dec = parameters_dict['orient_dec']
+                            centering_err = (parameters_dict['orient_ra_unc'] + parameters_dict['orient_dec_unc']) / 2
+                            inclination = parameters_dict['orient_incl']
+                            pa = parameters_dict['orient_posang']
+                            pa_err = parameters_dict['orient_posang_unc']
+                            dist = parameters_dict['dist']
+                            bar_r = parameters_dict['morph_bar_r']
 
                             # If the galaxy doesn't have a measured PA, skip
 
                             if np.isnan(pa):
                                 print('PA undefined: skipping')
                                 continue
+
+                            # If we want to check the effects of field of view, force in the test HDU here
+
+                            if fov_check:
+                                coverage = np.zeros_like(flux)
+                                coverage[~np.isnan(flux)] = 1
+
+                                fov_hdu = fits.open('muse/' + muse_version + '/NGC0628_MAPS.fits')
+                                fov_flux = fov_hdu['FLUX'].data
+                                fov_snr = fov_hdu['SNR'].data
+                                fov_flux_err = fov_flux / fov_snr
+
+                                fov_vel = fov_hdu['V_STARS'].data
+                                fov_vel_err = fov_hdu['FORM_ERR_V_STARS'].data
+
+                                # Convert the original RA and Dec to a central pixel.
+
+                                x_cen_orig, y_cen_orig = wcs.all_world2pix(ra, dec, 1)
+                                x_cen_orig, y_cen_orig = np.round(x_cen_orig), np.round(y_cen_orig)
+
+                                parameters_dict = ps_functions.get_sample_table_info('ngc0628', galaxy_table,
+                                                                                     sample_table_parameters)
+
+                                ra = parameters_dict['orient_ra']
+                                dec = parameters_dict['orient_dec']
+                                centering_err = (parameters_dict['orient_ra_unc'] + parameters_dict[
+                                    'orient_dec_unc']) / 2
+                                inclination = parameters_dict['orient_incl']
+                                pa = parameters_dict['orient_posang']
+                                pa_err = parameters_dict['orient_posang_unc']
+                                dist = parameters_dict['dist']
+                                bar_r = parameters_dict['morph_bar_r']
+
+                                wcs = WCS(fov_hdu[1])
+
+                                x_cen, y_cen = wcs.all_world2pix(ra, dec, 1)
+                                x_cen_round, y_cen_round = np.round(x_cen), np.round(y_cen)
+
+                                x_pad = [int(x_cen_round - x_cen_orig),
+                                         int(fov_flux.shape[1] - flux.shape[1] - x_cen_round + x_cen_orig)]
+                                y_pad = [int(y_cen_round - y_cen_orig),
+                                         int(fov_flux.shape[0] - flux.shape[0] - y_cen_round + y_cen_orig)]
+
+                                # If any of these are negative, then actually trim off
+                                slice_x_start = 0
+                                slice_x_end = None
+                                slice_y_start = 0
+                                slice_y_end = None
+                                if x_pad[0] < 0:
+                                    slice_x_start = - x_pad[0]
+                                    x_pad[0] = 0
+                                if x_pad[1] < 0:
+                                    slice_x_end = x_pad[1]
+                                    x_pad[1] = 0
+                                if y_pad[0] < 0:
+                                    slice_y_start = - y_pad[0]
+                                    y_pad[0] = 0
+                                if y_pad[1] < 0:
+                                    slice_y_end = y_pad[1]
+                                    y_pad[1] = 0
+
+                                coverage_pad = np.pad(coverage, (tuple(y_pad), tuple(x_pad)),
+                                                      'constant', constant_values=0)[
+                                               slice_y_start:slice_y_end, slice_x_start:slice_x_end]
+
+                                fov_flux[coverage_pad == 0] = np.nan
+                                fov_flux_err[coverage_pad == 0] = np.nan
+                                fov_vel[coverage_pad == 0] = np.nan
+                                fov_vel_err[coverage_pad == 0] = np.nan
+
+                                flux = fov_flux
+                                flux_err = fov_flux_err
+                                vel = fov_vel
+                                vel_err = fov_vel_err
 
                             # Calculate a physical distance conversion factor from the galaxy distance.
 
@@ -289,20 +417,22 @@ for galaxy in muse_galaxies:
                                 vel[mask] = np.nan
                                 vel_err[mask] = np.nan
 
-                            if not os.path.exists('pattern_speeds_output/pafit/' + galaxy + '_pafit_output_muse.txt') \
-                                    or overwrite_pafit:
+                            # if not os.path.exists('pattern_speeds_output/pafit/' + galaxy + '_pafit_output_muse.txt') \
+                            #         or overwrite_pafit:
+                            #
+                            #     pafit_pa, pafit_pa_err, v_sys = ps_functions.pafit_wrapper(vel, vel_err, x_cen, y_cen)
+                            #
+                            #     np.savetxt('pattern_speeds_output/pafit/' + galaxy + '_pafit_output_muse.txt',
+                            #                np.c_[pafit_pa, pafit_pa_err, v_sys],
+                            #                header='kin_pa, kin_pa_err, v_sys')
+                            #
+                            # else:
+                            #
+                            #     pafit_pa, pafit_pa_err, v_sys = np.loadtxt(
+                            #         'pattern_speeds_output/pafit/' + galaxy + '_pafit_output_muse.txt',
+                            #         unpack=True)
 
-                                pafit_pa, pafit_pa_err, v_sys = ps_functions.pafit_wrapper(vel, vel_err, x_cen, y_cen)
-
-                                np.savetxt('pattern_speeds_output/pafit/' + galaxy + '_pafit_output_muse.txt',
-                                           np.c_[pafit_pa, pafit_pa_err, v_sys],
-                                           header='kin_pa, kin_pa_err, v_sys')
-
-                            else:
-
-                                pafit_pa, pafit_pa_err, v_sys = np.loadtxt(
-                                    'pattern_speeds_output/pafit/' + galaxy + '_pafit_output_muse.txt',
-                                    unpack=True)
+                            v_sys = 0
 
                             # print('pafit/Lang fit: %.2f/%.2f' % (pafit_pa, pa))
 
@@ -323,26 +453,17 @@ for galaxy in muse_galaxies:
 
                                 # Mask anything Beyond the Bar in line with the kinematic PA.
 
-                                try:
+                                if bar_r > 0:
+                                    idx = ps_functions.bar_mask(x_coords, y_coords, pa, bar_r)
 
-                                    bar_r = np.float(bar_rs[bar_galaxy == galaxy])
+                                    flux[idx] = np.nan
+                                    flux_err[idx] = np.nan
+                                    vel[idx] = np.nan
+                                    vel_err[idx] = np.nan
 
-                                    if bar_r > 0:
-
-                                        idx = ps_functions.bar_mask(x_coords, y_coords, pa, bar_r)
-
-                                        flux[idx] = np.nan
-                                        flux_err[idx] = np.nan
-                                        vel[idx] = np.nan
-                                        vel_err[idx] = np.nan
-
-                                    else:
-
-                                        print('Bar not defined. Skipping masking')
-
-                                except TypeError:
-
-                                    print('No bar information found. Not masking anything.')
+                                # else:
+                                #
+                                #     print('Bar not defined. Skipping masking')
 
                             if len(slit_lengths) > 1:
                                 rot_matrix = np.matrix([[np.cos(pa * np.pi / 180), np.sin(pa * np.pi / 180)],
@@ -379,6 +500,58 @@ for galaxy in muse_galaxies:
                             vel[np.isnan(flux)] = np.nan
                             vel_err[np.isnan(flux)] = np.nan
 
+                            # Pull out the maximum slit length and save
+
+                            x_lon_reshape = bar.X_lon.reshape(flux.shape)
+                            x_lon_reshape[np.isnan(flux)] = np.nan
+
+                            y_lon_reshape = bar.Y_lon.reshape(flux.shape)
+                            y_lon_reshape[np.isnan(flux)] = np.nan
+
+                            r_max = np.nanmax(np.abs(x_lon_reshape))
+
+                            np.save(max_r_filename, r_max)
+
+                            if null_hypothesis:
+
+                                r = np.sqrt(x_lon_reshape ** 2 + (y_lon_reshape / np.cos(np.radians(inclination))) ** 2)
+
+                                r_edges = np.linspace(0, np.nanmax(r), 100)
+                                spacing = (r_edges[1] - r_edges[0]) / 2
+
+                                vel_null_hdu_name = os.path.join('halpha_rot_curves',
+                                                                 galaxy_edit + '_model_RC_MUSE_Ha.fits')
+
+                                if not os.path.exists(vel_null_hdu_name):
+                                    print('%s vel not found' % galaxy)
+                                    continue
+
+                                else:
+                                    vel_null = fits.open(vel_null_hdu_name)[0].data
+
+                                # Make sure  the shapes match
+                                if not np.all(vel_null.shape == flux.shape):
+                                    continue
+
+                                coverage = np.ones_like(flux)
+                                coverage[(flux == 0) | (np.isnan(flux)) | (vel_null == 0)] = 0
+
+                                flux_null = np.zeros_like(flux)
+                                flux_null[flux_null == 0] = np.nan
+
+                                for r_edge in r_edges:
+                                    idx = np.where((r >= r_edge - spacing) & (r <= r_edge + spacing))
+
+                                    flux_null[idx] = np.nanmedian(flux[idx])
+
+                                flux_null[coverage == 0] = np.nan
+                                vel_null[coverage == 0] = np.nan
+
+                                flux = flux_null
+                                flux_err = flux_err
+                                vel = vel_null
+                                vel_err = vel_err
+
                             # Pull out the average fit.
 
                             bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
@@ -408,6 +581,10 @@ for galaxy in muse_galaxies:
                             omega_bar_err *= km_s_kpc_conversion
 
                             if plot:
+
+                                # Figure out the 1kpc scale
+
+                                kpc_scale = 1 / (grid_step/3600 * np.pi/180 * dist * 1e3)
 
                                 # Plot on a best fit line and associated errors for this single bootstrap
 
@@ -451,11 +628,11 @@ for galaxy in muse_galaxies:
                                 vmax_vel = 150
                                 vmin_vel = -150
 
-                                plt.figure(figsize=(6, 6))
+                                plt.figure(figsize=(8, 9))
 
-                                plt.subplot(221)
+                                ax = plt.subplot(221, projection=wcs)
 
-                                plt.imshow(np.log10(flux),
+                                plt.imshow(np.log10(flux_pristine),
                                            cmap=cmocean.cm.gray_r,
                                            origin='lower', interpolation='none',
                                            vmin=vmin_flux, vmax=vmax_flux)
@@ -492,11 +669,35 @@ for galaxy in muse_galaxies:
                                 plt.xlim([0, flux.shape[1]])
                                 plt.ylim([0, flux.shape[0]])
 
-                                plt.axis('off')
+                                plt.xlabel('RA (J2000)')
+                                plt.ylabel('Dec (J2000)')
 
-                                plt.subplot(222)
+                                fancy_label = {'mass': r'$\mathbf{M_\ast}}$',
+                                               'ha': r'H$\mathbf{\alpha}$'}[hdu_type]
 
-                                plt.imshow(vel,
+                                fancy_text = '%s, %s' % (galaxy.upper(), fancy_label)
+
+                                plt.text(0.05, 0.95, fancy_text, ha='left', va='top',
+                                         fontweight='bold', transform=ax.transAxes,
+                                         bbox=dict(facecolor='white', alpha=0.7))
+
+                                scalebar = AnchoredSizeBar(ax.transData,
+                                                           kpc_scale, '1kpc', 3,
+                                                           pad=0.3,
+                                                           borderpad=0.3,
+                                                           color='black',
+                                                           frameon=True)
+
+                                ax.add_artist(scalebar)
+
+                                ax.coords[0].set_ticks(exclude_overlapping=True)
+                                ax.coords[1].set_ticks(exclude_overlapping=True)
+
+                                # plt.axis('off')
+
+                                ax = plt.subplot(222, projection=wcs)
+
+                                plt.imshow(vel_pristine,
                                            cmap=cmocean.cm.balance,
                                            origin='lower', interpolation='none',
                                            vmin=vmin_vel, vmax=vmax_vel)
@@ -508,7 +709,28 @@ for galaxy in muse_galaxies:
                                 plt.xlim([0, flux.shape[1]])
                                 plt.ylim([0, flux.shape[0]])
 
-                                plt.axis('off')
+                                # plt.axis('off')
+                                plt.xlabel('RA (J2000)')
+                                plt.ylabel('Dec (J2000)')
+
+                                scalebar = AnchoredSizeBar(ax.transData,
+                                                           kpc_scale, '1kpc', 3,
+                                                           pad=0.3,
+                                                           borderpad=0.3,
+                                                           color='black',
+                                                           frameon=True)
+
+                                ax.add_artist(scalebar)
+
+                                plt.text(0.05, 0.95, 'Velocity', ha='left', va='top',
+                                         fontweight='bold', transform=ax.transAxes,
+                                         bbox=dict(facecolor='white', alpha=0.7))
+
+                                ax.coords[1].set_ticklabel_position('r')
+                                ax.coords[1].set_axislabel_position('r')
+
+                                ax.coords[0].set_ticks(exclude_overlapping=True)
+                                ax.coords[1].set_ticks(exclude_overlapping=True)
 
                                 ax = plt.subplot(212)
 
@@ -528,8 +750,10 @@ for galaxy in muse_galaxies:
                                 plt.xlim([x_min, x_max])
                                 plt.ylim([y_min, y_max])
 
+                                plt.grid(which='major', color='gray', linestyle='-', alpha=0.5)
+
                                 plt.text(0.05, 0.85,
-                                         r'$\Omega_p = %.2f \pm %.2f\, \mathrm{km\,s}^{-1} \mathrm{kpc}^{-1}$ '
+                                         r'$\Omega_\mathrm{P} = %.2f \pm %.2f\, \mathrm{km\,s}^{-1} \mathrm{kpc}^{-1}$ '
                                          % (omega_bar, omega_bar_err),
                                          transform=ax.transAxes,
                                          bbox=dict(facecolor='white', alpha=0.7))
@@ -537,12 +761,12 @@ for galaxy in muse_galaxies:
                                 plt.xlabel(r'<$x$> $\left(^{\prime \prime}\right)$')
                                 plt.ylabel(r'<$v$> $\left(\mathrm{km\,s}^{-1}\right)$')
 
-                                plt.tight_layout()
+                                # plt.tight_layout()
 
-                                plt.savefig(pattern_speed_plot_filename + '.png',
-                                            bbox_inches='tight')
-                                plt.savefig(pattern_speed_plot_filename + '.pdf',
-                                            bbox_inches='tight')
+                                # plt.show()
+
+                                plt.savefig(pattern_speed_plot_filename + '.png', bbox_inches='tight')
+                                plt.savefig(pattern_speed_plot_filename + '.pdf', bbox_inches='tight')
 
                                 plt.close()
 
@@ -559,8 +783,8 @@ for galaxy in muse_galaxies:
                                 # Put everything into the bootstrap
 
                                 bootstrap_tw(flux, flux_err, vel, vel_err, grid_step=grid_step, slit_width=slit_width,
-                                             x_cen=x_cen, y_cen=y_cen, centering_err=1, pa=pa, pa_err=pa_err,
-                                             inclination=inclination,
+                                             x_cen=x_cen, y_cen=y_cen, centering_err=centering_err,
+                                             pa=pa, pa_err=pa_err, inclination=inclination,
                                              dist=dist, bootstrap_filename=bootstrap_filename,
                                              overwrite_bootstraps=overwrite_bootstraps,
                                              n_bootstraps=1000, pattern_speed_filename=pattern_speed_filename,

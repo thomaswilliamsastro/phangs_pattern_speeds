@@ -55,7 +55,7 @@ new_mask_omegas_down = []
 
 for galaxy in galaxies:
 
-    galaxy = galaxy.strip()
+    galaxy = galaxy.upper()
 
     file_name_old = output_folder + old_version + '/'
 
@@ -117,8 +117,8 @@ plt.errorbar(np.asarray(old_mask_omegas), np.asarray(new_mask_omegas),
 plt.plot([0, 100], [0, 100],
          c='k', ls='--')
 
-plt.xlim([0, 100])
-plt.ylim([0, 100])
+plt.xlim([0, 75])
+plt.ylim([0, 75])
 
 plt.xlabel(r'$\Omega_\mathrm{p, ' + old_version + '}$ (km s$^{-1}$ kpc$^{-1}$)')
 plt.ylabel(r'$\Omega_\mathrm{p, ' + new_version + '}$ (km s$^{-1}$ kpc$^{-1}$)')
@@ -129,9 +129,7 @@ ax.set_aspect('equal')
 
 # plt.show()
 
-plt.savefig(plot_folder + 'reduction_comparison.png',
-            bbox_inches='tight')
-plt.savefig(plot_folder + 'reduction_comparison.pdf',
-            bbox_inches='tight')
+plt.savefig(plot_folder + 'reduction_comparison.png', bbox_inches='tight')
+plt.savefig(plot_folder + 'reduction_comparison.pdf', bbox_inches='tight')
 
 print('Complete! Took %.2fs' % (time.time() - start))

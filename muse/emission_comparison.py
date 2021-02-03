@@ -131,7 +131,7 @@ for galaxy in muse_galaxies:
     plt.xlim([0.4 * np.nanmin(omega_bar), xlims[-1]])
 
     plt.yticks(0.5 * np.array(range(len(labels))) + 0.125, labels)
-    plt.xlabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+    plt.xlabel(r'$\Omega_{p}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
 
     plt.text(0.05, 0.95, galaxy,
              ha='left', va='top',

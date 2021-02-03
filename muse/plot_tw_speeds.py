@@ -102,7 +102,7 @@ for hdu_type in hdu_types:
             if hdu_type == 'toy_sim':
                 x_label = r'$\Omega_{p, \mathrm{obs}}-\Omega_{p, \mathrm{true}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$'
             else:
-                x_label = r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$'
+                x_label = r'$\Omega_{p}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$'
 
             plt.yticks(0.5 * np.array(range(len(muse_galaxies))), muse_galaxies)
             plt.xlabel(x_label)

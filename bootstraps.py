@@ -37,8 +37,6 @@ def log_prob(theta, flux, flux_err, vel, vel_err,
 
     x_coords, y_coords = np.meshgrid(grid_x, grid_y)
 
-    # TODO: Replace with pydisc!
-
     bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
                       Velocity=vel, Velocity_err=vel_err,
                       Xin=x_coords, Yin=y_coords, PAnodes=pa_bootstrap,
@@ -79,6 +77,7 @@ def log_likelihood(theta, x_tw, v_tw, x_tw_err, v_tw_err):
 
 def bootstrap_tw(flux, flux_err,
                  vel, vel_err,
+                 flux_null=None, vel_null=None, null_sigma=1,
                  grid_step=0.2, slit_width=1,
                  x_cen=None, y_cen=None,
                  centering_err=1,
@@ -88,7 +87,8 @@ def bootstrap_tw(flux, flux_err,
                  n_bootstraps=1000,
                  bootstrap_filename='bootstraps.txt',
                  overwrite_bootstraps=False,
-                 pattern_speed_filename='pattern_speeds.txt'
+                 pattern_speed_filename='pattern_speeds.txt',
+                 correction_type=None
                  ):
     """Bootstrapped errors for the Tremaine-Weinberg pattern speed method.
 
@@ -181,8 +181,6 @@ def bootstrap_tw(flux, flux_err,
 
         x_coords, y_coords = np.meshgrid(grid_x, grid_y)
 
-        # TODO: Replace with pydisc!
-
         bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
                           Velocity=vel, Velocity_err=vel_err,
                           Xin=x_coords, Yin=y_coords, PAnodes=pa_bootstrap,
@@ -195,6 +193,57 @@ def bootstrap_tw(flux, flux_err,
 
         x_tw_err = bar.dfx_tw_err
         v_tw_err = bar.dfV_tw_err
+
+        if flux_null is not None:
+
+            if correction_type is not 'strictest':
+
+                bar_null = pybar.mybar(Flux=flux_null, Flux_err=np.ones_like(flux_null),
+                                       Velocity=vel_null, Velocity_err=np.ones_like(flux_null),
+                                       Xin=x_coords, Yin=y_coords, PAnodes=pa_bootstrap,
+                                       inclin=inclination)
+                bar_null.tremaine_weinberg(slit_width=slit_width)
+
+                x_tw_null = bar_null.dfx_tw
+                v_tw_null = bar_null.dfV_tw
+
+            else:
+
+                x_tw_null = np.zeros_like(x_tw)
+                v_tw_null = np.zeros_like(v_tw)
+
+                dig = bar.dig.reshape(flux.shape)
+                x_lon = bar.X_lon.reshape(flux.shape)
+
+                for i in np.unique(dig):
+                    idx = np.where(dig == i)
+
+                    flux_dig = flux[idx]
+                    vel_dig = vel[idx]
+                    x_lon_dig = x_lon[idx]
+
+                    nan_idx = np.where(np.isnan(flux_dig))[0]
+                    anti_nan_idx = -1 - nan_idx
+
+                    flux_anti_nan = np.nansum(flux_dig[anti_nan_idx])
+                    v_tw_null[i] = np.nansum(vel_dig[anti_nan_idx] * flux_dig[anti_nan_idx]) / flux_anti_nan
+                    x_tw_null[i] = np.nansum(x_lon_dig[anti_nan_idx] * flux_dig[anti_nan_idx]) / flux_anti_nan
+
+            # NaN out anything that isn't above the null
+
+            mask = np.where((np.abs(x_tw) - np.abs(x_tw_null) <= null_sigma * x_tw_err) |
+                            (np.abs(v_tw) - np.abs(v_tw_null) <= null_sigma * v_tw_err))
+
+            # NaN out anything that isn't significantly different in <x> or <v>
+
+            # mask = np.where((np.abs(x_tw_null - x_tw) <= null_sigma * x_tw_err) |
+            #                 (np.abs(v_tw_null - v_tw) <= null_sigma * v_tw_err))
+
+            x_tw[mask] = np.nan
+            v_tw[mask] = np.nan
+
+            x_tw_err[mask] = np.nan
+            v_tw_err[mask] = np.nan
 
         m, m_err, c, c_err = ps_functions.odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
 
@@ -299,8 +348,6 @@ def mcmc_tw_multiple(flux, flux_err,
 
     x_coords, y_coords = np.meshgrid(grid_x, grid_y)
 
-    # TODO: Replace with pydisc!
-
     bar = pybar.mybar(Flux=flux, Flux_err=flux_err,
                       Velocity=vel, Velocity_err=vel_err,
                       Xin=x_coords, Yin=y_coords, PAnodes=pa,
@@ -316,8 +363,8 @@ def mcmc_tw_multiple(flux, flux_err,
 
     m, m_err, c, c_err = ps_functions.odr_fit(x_tw, x_tw_err, v_tw, v_tw_err)
 
-    p0 = [np.nanpercentile(np.abs(x_tw), 95)/2, c]
-    p0.extend([m/(i+1) for i in range(n_pattern_speeds)])
+    p0 = [np.nanpercentile(np.abs(x_tw), 95) / 2, c]
+    p0.extend([m / (i + 1) for i in range(n_pattern_speeds)])
 
     p0 = np.random.normal(loc=p0, scale=1e-2 * np.abs(p0), size=(n_walkers, n_dim))
 

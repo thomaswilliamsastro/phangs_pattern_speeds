@@ -10,9 +10,10 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from astropy.table import Table
 
-from vars import phangs_folder, muse_version, muse_galaxies, muse_plot, muse_output, slit_lengths, \
-    mask_outside_bars, star_masks, hdu_types
+from vars import phangs_folder, muse_version, muse_plot, muse_output, slit_lengths, \
+    mask_outside_bars, star_masks, hdu_types, galaxy_table, output_folder, pattern_speed_version
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -27,17 +28,33 @@ if not os.path.exists(muse_plot + muse_version):
 if not os.path.exists(muse_plot + muse_version + '/slit_length/'):
     os.mkdir(muse_plot + muse_version + '/slit_length/')
 
-bar_galaxy, bar_rs = np.loadtxt('environment/PHANGSmasks_v2.dat',
-                                usecols=(0, 12),
-                                unpack=True,
-                                skiprows=4,
-                                dtype=str)
+pattern_speed_table = Table.read(output_folder + 'pattern_speed_table_' + pattern_speed_version + '.fits')
 
-# muse_galaxies = ['NGC1512']
+muse_galaxies = ['ngc3351']
 
 for galaxy in muse_galaxies:
 
+    galaxy_row = galaxy_table[galaxy_table['name'] == galaxy]
+    r_25 = galaxy_row['size_r25'][0]
+    bar_r = galaxy_row['morph_bar_r'][0]
+
+    galaxy = galaxy.upper()
+
+    pattern_speed_row = pattern_speed_table[pattern_speed_table['GALAXY'] == galaxy]
+
     for hdu_type in hdu_types:
+
+        if hdu_type == 'mass':
+            om_p_table_extension = 'MUSE_MASS'
+        else:
+            om_p_table_extension = 'MUSE_HA'
+
+        try:
+            om_p = pattern_speed_row['OM_P_'+om_p_table_extension][0]
+            om_p_err_up = om_p + pattern_speed_row['OM_P_'+om_p_table_extension+'_ERR_UP'][0]
+            om_p_err_down = om_p - pattern_speed_row['OM_P_'+om_p_table_extension+'_ERR_DOWN'][0]
+        except IndexError:
+            om_p, om_p_err_up, om_p_err_down = np.nan, np.nan, np.nan
 
         for star_mask in star_masks:
 
@@ -92,7 +109,21 @@ for galaxy in muse_galaxies:
                     print('Nothing found for %s: skipping' % galaxy)
                     continue
 
-                plt.figure(figsize=(8, 6))
+                # Read in the maximum slit length
+
+                max_r = np.load(muse_output + muse_version + '/' + hdu_type + '_smask_bmask/' +
+                                galaxy + '_' + hdu_type + '_smask_bmask_max_r.npy')
+
+                slit_lengths = np.array(slit_lengths)
+                omega_bars = np.array(omega_bars)
+
+                idx = np.where(slit_lengths <= max_r)
+                slit_lengths = slit_lengths[idx]
+                omega_bars = omega_bars[idx]
+                omega_bars_err_down = omega_bars_err_down[idx]
+                omega_bars_err_up = omega_bars_err_up[idx]
+
+                fig, ax = plt.subplots(figsize=(4, 3.5))
 
                 plt.errorbar(slit_lengths, omega_bars,
                              yerr=[omega_bars_err_down, omega_bars_err_up],
@@ -101,23 +132,29 @@ for galaxy in muse_galaxies:
 
                 # Plot on the bar radius.
 
-                idx = np.where(bar_galaxy == galaxy)
-                if len(idx[0] > 0):
+                if bar_r > 0:
+                    plt.axvline(bar_r, c='k', ls='--', lw=2)
 
-                    r = np.float(bar_rs[bar_galaxy == galaxy])
+                # plt.axvline(max_r, c='k', ls=':', lw=2)
+                plt.axhline(om_p, c='k', ls='-')
+                plt.axhline(om_p_err_up, c='k', ls='--')
+                plt.axhline(om_p_err_down, c='k', ls='--')
 
-                    if r > 0:
-                        plt.axvline(r, c='k', ls='--', lw=2)
+                plt.xlim(0, max_r)
+
+                # Add a second axis normalised by r25
+
+                ax_2 = ax.secondary_xaxis('top', functions=(lambda r: r / r_25, lambda r: r / r_25))
+                ax_2.set_xlabel(r'$R/R_{25, \mathrm{opt}}$')
 
                 plt.xlabel(r'$r$ ($^{\prime \prime}$)')
-                plt.ylabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+                plt.ylabel(r'$\Omega_\mathrm{P}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
 
                 plt.tight_layout()
 
-                plt.savefig(plot_filename + '.png',
-                            bbox_inches='tight')
-                plt.savefig(plot_filename + '.pdf',
-                            bbox_inches='tight')
+                # plt.show()
+                plt.savefig(plot_filename + '.png', bbox_inches='tight')
+                plt.savefig(plot_filename + '.pdf', bbox_inches='tight')
 
                 plt.close()
 

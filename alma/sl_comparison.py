@@ -10,8 +10,10 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from astropy.table import Table
 
-from vars import phangs_folder, alma_version, alma_plot, alma_output, alma_galaxies, slit_lengths, mask_outside_bars
+from vars import phangs_folder, alma_version, alma_plot, alma_output, alma_galaxies, slit_lengths, mask_outside_bars, \
+    galaxy_table, pattern_speed_version, output_folder
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
@@ -26,17 +28,25 @@ if not os.path.exists(alma_plot + alma_version):
 if not os.path.exists(alma_plot + alma_version + '/slit_length/'):
     os.mkdir(alma_plot + alma_version + '/slit_length/')
 
-bar_galaxy, bar_rs = np.loadtxt('environment/PHANGSmasks_v2.dat',
-                                usecols=(0, 12),
-                                unpack=True,
-                                skiprows=4,
-                                dtype=str)
+pattern_speed_table = Table.read(output_folder + 'pattern_speed_table_' + pattern_speed_version + '.fits')
 
 for mask_outside_bar in mask_outside_bars:
 
     for galaxy in alma_galaxies:
 
-        galaxy = galaxy.strip()
+        galaxy_row = galaxy_table[galaxy_table['name'] == galaxy]
+        r_25 = galaxy_row['size_r25'][0]
+
+        galaxy = galaxy.upper()
+
+        pattern_speed_row = pattern_speed_table[pattern_speed_table['GALAXY'] == galaxy]
+
+        try:
+            om_p = pattern_speed_row['OM_P_ALMA'][0]
+            om_p_err_up = om_p + pattern_speed_row['OM_P_ALMA_ERR_UP'][0]
+            om_p_err_down = om_p - pattern_speed_row['OM_P_ALMA_ERR_DOWN'][0]
+        except IndexError:
+            om_p, om_p_err_up, om_p_err_down = np.nan, np.nan, np.nan
 
         omega_bars = np.zeros(len(slit_lengths))
         omega_bars_err_up = np.zeros_like(omega_bars)
@@ -70,7 +80,11 @@ for mask_outside_bar in mask_outside_bars:
             print('%s not found' % galaxy)
             continue
 
-        plt.figure(figsize=(8, 6))
+        # Read in the maximum slit length
+
+        max_r = np.load(alma_output + alma_version + '/bmask/' + galaxy + '_bmask_max_r.npy')
+
+        fig, ax = plt.subplots(figsize=(4, 3.5))
 
         plt.errorbar(slit_lengths, omega_bars,
                      yerr=[omega_bars_err_down, omega_bars_err_up],
@@ -79,18 +93,23 @@ for mask_outside_bar in mask_outside_bars:
 
         # Plot on the bar radius.
 
-        idx = np.where(bar_galaxy == galaxy)
-        if len(idx[0] > 0):
+        bar_r = galaxy_table[galaxy_table['name'] == galaxy.lower()]['morph_bar_r'][0]
+        plt.axvline(bar_r/2, c='k', ls='--', lw=2)
 
-            r = np.float(bar_rs[bar_galaxy == galaxy])
+        plt.axvline(max_r, c='k', ls=':', lw=2)
+        plt.axhline(om_p, c='k', ls='-')
+        plt.axhline(om_p_err_up, c='k', ls='--')
+        plt.axhline(om_p_err_down, c='k', ls='--')
 
-            if r > 0:
-                plt.axvline(r, c='k', ls='--', lw=2)
+        # Add a second axis normalised by r25
+
+        ax_2 = ax.secondary_xaxis('top', functions=(lambda r: r / r_25, lambda r: r / r_25))
+        ax_2.set_xlabel(r'$R/R_{25, \mathrm{opt}}$')
 
         plt.ylim([-10, 120])
 
-        plt.xlabel(r'$r$ ($^{\prime \prime}$)')
-        plt.ylabel(r'$\Omega_{p, \mathrm{TW}}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
+        plt.xlabel(r'Slit length ($^{\prime \prime}$)')
+        plt.ylabel(r'$\Omega_{p}\, (\mathrm{km\,s}^{-1}\,\mathrm{kpc}^{-1})$')
 
         plt.tight_layout()
 
@@ -102,6 +121,8 @@ for mask_outside_bar in mask_outside_bars:
             plot_name += '_nobmask'
 
         plot_name += '_alma_sl_comparison'
+
+        # plt.show()
 
         plt.savefig(plot_name + '.png',
                     bbox_inches='tight')
